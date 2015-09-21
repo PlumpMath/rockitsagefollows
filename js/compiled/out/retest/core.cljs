@@ -4,8 +4,9 @@
     (:require
       [reagent.core :as reagent]
       [goog.net.XhrIo]
-      [cljs.core.async :refer [chan put! <!]]
-      ))
+      [goog.string :as gstring]
+      [goog.string.format]
+      [cljs.core.async :refer [chan put! <!]]))
 
 (def recentFollows (reagent/atom []))
 
@@ -23,6 +24,22 @@
       "http://i.imgur.com/r7o9HUm.png"
       logo)))
 
+(defn set-parent-background-color! [html-node color]
+  (set! (-> html-node .-parentElement .-style .-backgroundColor) color))
+
+(def weekmap ["Sun" "Mon" "Tues" "Wed" "Thurs" "Fri" "Sat"])
+
+(defn parse-date [created_at]
+  (let [datetime (new js/Date created_at)
+        ampm (if (> (.getHours datetime) 12) "PM" "AM")]
+    (str (weekmap (.getDay datetime)) ", "
+      (.getMonth datetime) "-"
+      (.getDate datetime) " "
+      (gstring/format "%2d" (inc (mod (dec (.getHours datetime)) 12))) ":"
+      (gstring/format "%02d" (.getMinutes datetime)) " " ampm)))
+
+(def myTime (new js/Date "2015-09-21T01:30:32Z"))
+
 (defn followsList []
   [:table
     (let [sorted-follows (reverse (sort-by #(-> % .-created_at) @recentFollows))]
@@ -33,13 +50,14 @@
               created_at (-> follow .-created_at)
               logo (-> follow .-user logo-or-default)]
           ^{:key id}
-          [:tr {:style {:background-color "#ACA"} :on-mouse-enter #(set! (-> % .-target .-parentElement .-style .-backgroundColor) "#FFF")}
+          [:tr {:style {:background-color "#ACA"}
+                :on-mouse-enter (fn [event] (set-parent-background-color! (-> event .-target) "white"))}
             [:td {:style {:border "solid black 1px"}}
               [:div {:style {:height "50px"}}
                 [:a {:href (twitch-profile-url name)}
                   [:img {:src logo :width 50}]]]]
             [:td display_name]
-            [:td created_at]])))])
+            [:td (parse-date created_at)]])))])
 
 (defn responseTextAsJson [event]
    (-> event .-target .getResponseText js/JSON.parse))
@@ -72,17 +90,18 @@
   (go
     (doseq [follow (<! (unique-new-follows))]
       (swap! recentFollows conj follow))))
+
 (defn more-follows []
   (go
     (doseq [follow (<! (unique-new-follows))]
       (.play my-audio)
       (swap! recentFollows conj follow))))
 
-(defn ^:export main []
+(defn ^:export run []
   (reagent/render [followsList]
     (.getElementById js/document "follows"))
   (init-follows)
-  (js/setInterval more-follows 20000))
+  (js/setInterval more-follows 30000))
   ;;(let [c (chan)]
   ;;  (put! c 3)
   ;;  (go (js/console.log (<! c)))))
